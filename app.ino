@@ -306,16 +306,13 @@ void setupWebServer() {
   server.begin();
   Serial.println("HTTP server started");
 }
-
 // Handle root page request
 void handleRoot() {
   String html = "<!DOCTYPE html>";
-  html += "<html>";
-  html += "<head>";
-  html += "<title>School Bell System</title>";
+  html += "<html><head><title>School Bell System</title>";
   html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
   html += "<style>";
-  html += "body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }";
+  html += "body { font-family: Arial; margin: 0; padding: 20px; }";
   html += "h1 { color: #333; }";
   html += "table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }";
   html += "th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }";
@@ -329,18 +326,18 @@ void handleRoot() {
   html += ".tab button:hover { background-color: #ddd; }";
   html += ".tab button.active { background-color: #ccc; }";
   html += ".tabcontent { display: none; padding: 12px; border: 1px solid #ccc; border-top: none; }";
-  html += "</style>";
-  html += "</head>";
+  html += "</style></head>";
+  
   html += "<body>";
   html += "<h1>School Bell System</h1>";
   
-  // Tab buttons
+  // Simplified interface with direct onclick attributes
   html += "<div class='tab'>";
-  html += "<button class='tablinks' id='statusBtn'>Status</button>";
-  html += "<button class='tablinks' id='weekdayBtn'>Weekday Alarms</button>";
-  html += "<button class='tablinks' id='fridayBtn'>Friday Alarms</button>";
-  html += "<button class='tablinks' id='timeBtn'>Set Time</button>";
-  html += "<button class='tablinks' id='wifiBtn'>WiFi Settings</button>";
+  html += "<button class='tablinks' onclick='openTab(\"status\")'>Status</button>";
+  html += "<button class='tablinks' onclick='openTab(\"weekday\")'>Weekday Alarms</button>";
+  html += "<button class='tablinks' onclick='openTab(\"friday\")'>Friday Alarms</button>";
+  html += "<button class='tablinks' onclick='openTab(\"time\")'>Set Time</button>";
+  html += "<button class='tablinks' onclick='openTab(\"wifi\")'>WiFi Settings</button>";
   html += "</div>";
   
   // Status tab
@@ -348,27 +345,25 @@ void handleRoot() {
   html += "<h2>Current Status</h2>";
   html += "<p>Time: <span id='current-time'>00:00:00</span></p>";
   html += "<p>Date: <span id='current-date'>01/01/2000 - Mon</span></p>";
-  html += "<button id='refreshBtn'>Refresh Page</button>";
+  html += "<button onclick='location.reload()'>Refresh Page</button>";
   html += "</div>";
   
   // Weekday alarms tab
   html += "<div id='weekday' class='tabcontent'>";
   html += "<h2>Weekday Alarms (Monday-Thursday)</h2>";
-  html += "<table>";
+  html += "<table id='weekday-table'>";
   html += "<tr><th>Enable</th><th>Hour</th><th>Minute</th><th>Duration (sec)</th></tr>";
-  html += "<tbody id='weekday-alarms'></tbody>";
   html += "</table>";
-  html += "<button id='save-weekday'>Save Weekday Alarms</button>";
+  html += "<button onclick='saveSettings()'>Save Weekday Alarms</button>";
   html += "</div>";
   
   // Friday alarms tab
   html += "<div id='friday' class='tabcontent'>";
   html += "<h2>Friday Alarms</h2>";
-  html += "<table>";
+  html += "<table id='friday-table'>";
   html += "<tr><th>Enable</th><th>Hour</th><th>Minute</th><th>Duration (sec)</th></tr>";
-  html += "<tbody id='friday-alarms'></tbody>";
   html += "</table>";
-  html += "<button id='save-friday'>Save Friday Alarms</button>";
+  html += "<button onclick='saveSettings()'>Save Friday Alarms</button>";
   html += "</div>";
   
   // Set time tab
@@ -377,286 +372,239 @@ void handleRoot() {
   html += "<table>";
   html += "<tr><th>Hour</th><th>Minute</th><th>Second</th></tr>";
   html += "<tr>";
-  html += "<td><input type='number' id='time-hour' min='0' max='23'></td>";
-  html += "<td><input type='number' id='time-minute' min='0' max='59'></td>";
-  html += "<td><input type='number' id='time-second' min='0' max='59'></td>";
+  html += "<td><input type='number' id='time-hour' min='0' max='23' value='0'></td>";
+  html += "<td><input type='number' id='time-minute' min='0' max='59' value='0'></td>";
+  html += "<td><input type='number' id='time-second' min='0' max='59' value='0'></td>";
   html += "</tr>";
   html += "</table>";
   
   html += "<table>";
   html += "<tr><th>Day</th><th>Month</th><th>Year</th></tr>";
   html += "<tr>";
-  html += "<td><input type='number' id='date-day' min='1' max='31'></td>";
-  html += "<td><input type='number' id='date-month' min='1' max='12'></td>";
-  html += "<td><input type='number' id='date-year' min='2000' max='2099'></td>";
+  html += "<td><input type='number' id='date-day' min='1' max='31' value='1'></td>";
+  html += "<td><input type='number' id='date-month' min='1' max='12' value='1'></td>";
+  html += "<td><input type='number' id='date-year' min='2000' max='2099' value='2023'></td>";
   html += "</tr>";
   html += "</table>";
   
-  html += "<button id='save-time'>Set Time & Date</button>";
+  html += "<button onclick='saveTime()'>Set Time & Date</button>";
   html += "</div>";
   
   // WiFi settings tab
   html += "<div id='wifi' class='tabcontent'>";
   html += "<h2>WiFi Settings</h2>";
-  html += "<p id='wifi-status'></p>";
-  html += "<p id='ap-info'></p>";
-  html += "<p id='sta-info'></p>";
   
-  html += "<table>";
-  html += "<tr><th>WiFi SSID</th><td><input type='text' id='wifi-ssid'></td></tr>";
-  html += "<tr><th>WiFi Password</th><td><input type='password' id='wifi-password'></td></tr>";
-  html += "</table>";
-  html += "<button id='save-wifi'>Save WiFi Settings</button>";
-  html += "</div>";
-
-  // JavaScript
-  html += "<script>";
-  
-  // Variables for WiFi status (pre-populated from C++)
-  html += "const stationSsid = '" + station_ssid + "';";
-  html += "const stationPassword = '" + station_password + "';";
-  html += "const apSsid = '" + String(ap_ssid) + "';";
-  html += "const apIp = '" + WiFi.softAPIP().toString() + "';";
-  html += "const isConnected = " + String(WiFi.status() == WL_CONNECTED ? "true" : "false") + ";";
+  // Display current WiFi status
+  html += "<p>Current mode: ";
+  html += (WiFi.status() == WL_CONNECTED) ? "Connected to " + station_ssid : "AP Mode Only";
+  html += "</p>";
+  html += "<p>AP SSID: " + String(ap_ssid) + " (IP: " + WiFi.softAPIP().toString() + ")</p>";
   
   if (WiFi.status() == WL_CONNECTED) {
-    html += "const stationIp = '" + WiFi.localIP().toString() + "';";
-  } else {
-    html += "const stationIp = '';";
+    html += "<p>Station IP: " + WiFi.localIP().toString() + "</p>";
   }
-
-  // Main JavaScript
-  html += "let settings = {};";
-  html += "let currentTime = {};";
-  html += "const tabcontents = document.getElementsByClassName('tabcontent');";
+  
+  html += "<table>";
+  html += "<tr><th>WiFi SSID</th><td><input type='text' id='wifi-ssid' value='" + station_ssid + "'></td></tr>";
+  html += "<tr><th>WiFi Password</th><td><input type='password' id='wifi-password' value='" + station_password + "'></td></tr>";
+  html += "</table>";
+  html += "<button onclick='saveWiFi()'>Save WiFi Settings</button>";
+  html += "</div>";
+  
+  // Simple JavaScript
+  html += "<script>";
   
   // Tab switching function
-  html += "function showTab(tabId) {";
-  html += "  for (let i = 0; i < tabcontents.length; i++) {";
-  html += "    tabcontents[i].style.display = 'none';";
+  html += "function openTab(tabName) {";
+  html += "  var i, tabcontent, tablinks;";
+  html += "  tabcontent = document.getElementsByClassName('tabcontent');";
+  html += "  for (i = 0; i < tabcontent.length; i++) {";
+  html += "    tabcontent[i].style.display = 'none';";
   html += "  }";
-  html += "  document.getElementById(tabId).style.display = 'block';";
+  html += "  tablinks = document.getElementsByClassName('tablinks');";
+  html += "  for (i = 0; i < tablinks.length; i++) {";
+  html += "    tablinks[i].className = tablinks[i].className.replace(' active', '');";
+  html += "  }";
+  html += "  document.getElementById(tabName).style.display = 'block';";
+  html += "  event.currentTarget.className += ' active';";
   html += "}";
   
-  // Time functions
+  // Save time function
   html += "function saveTime() {";
-  html += "  const timeData = {";
-  html += "    hour: parseInt(document.getElementById('time-hour').value),";
-  html += "    minute: parseInt(document.getElementById('time-minute').value),";
-  html += "    second: parseInt(document.getElementById('time-second').value),";
-  html += "    day: parseInt(document.getElementById('date-day').value),";
-  html += "    month: parseInt(document.getElementById('date-month').value),";
-  html += "    year: parseInt(document.getElementById('date-year').value)";
+  html += "  var hour = document.getElementById('time-hour').value;";
+  html += "  var minute = document.getElementById('time-minute').value;";
+  html += "  var second = document.getElementById('time-second').value;";
+  html += "  var day = document.getElementById('date-day').value;";
+  html += "  var month = document.getElementById('date-month').value;";
+  html += "  var year = document.getElementById('date-year').value;";
+  
+  html += "  var data = {";
+  html += "    hour: parseInt(hour),";
+  html += "    minute: parseInt(minute),";
+  html += "    second: parseInt(second),";
+  html += "    day: parseInt(day),";
+  html += "    month: parseInt(month),";
+  html += "    year: parseInt(year)";
   html += "  };";
+  
   html += "  fetch('/api/time', {";
   html += "    method: 'POST',";
   html += "    headers: { 'Content-Type': 'application/json' },";
-  html += "    body: JSON.stringify(timeData)";
+  html += "    body: JSON.stringify(data)";
   html += "  })";
-  html += "  .then(response => response.json())";
-  html += "  .then(data => alert('Time set successfully'))";
-  html += "  .catch(error => alert('Error setting time: ' + error));";
+  html += "  .then(function(response) { return response.json(); })";
+  html += "  .then(function(data) { alert('Time set successfully'); })";
+  html += "  .catch(function(error) { alert('Error setting time: ' + error); });";
   html += "}";
   
-  html += "function fetchTime() {";
-  html += "  fetch('/api/time')";
-  html += "    .then(response => response.json())";
-  html += "    .then(data => { currentTime = data; updateTimeUI(); })";
-  html += "    .catch(error => console.error('Error fetching time:', error));";
-  html += "}";
-  
-  html += "function updateTimeUI() {";
-  html += "  document.getElementById('current-time').innerText = ";
-  html += "    `${currentTime.hour.toString().padStart(2, '0')}:${currentTime.minute.toString().padStart(2, '0')}:${currentTime.second.toString().padStart(2, '0')}`;";
-  html += "  document.getElementById('current-date').innerText = ";
-  html += "    `${currentTime.day}/${currentTime.month}/${currentTime.year} - ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][currentTime.dayOfWeek]}`;";
-  html += "  document.getElementById('time-hour').value = currentTime.hour;";
-  html += "  document.getElementById('time-minute').value = currentTime.minute;";
-  html += "  document.getElementById('time-second').value = currentTime.second;";
-  html += "  document.getElementById('date-day').value = currentTime.day;";
-  html += "  document.getElementById('date-month').value = currentTime.month;";
-  html += "  document.getElementById('date-year').value = currentTime.year;";
-  html += "  setTimeout(fetchTime, 1000);";
-  html += "}";
-  
-  // Alarm functions
-  html += "function fetchSettings() {";
-  html += "  fetch('/api/settings')";
-  html += "    .then(response => response.json())";
-  html += "    .then(data => { settings = data; updateSettingsUI(); })";
-  html += "    .catch(error => console.error('Error fetching settings:', error));";
-  html += "}";
-  
-  html += "function updateSettingsUI() {";
-  html += "  // Update weekday alarms";
-  html += "  const weekdayTbody = document.getElementById('weekday-alarms');";
-  html += "  weekdayTbody.innerHTML = '';";
-  html += "  for (let i = 0; i < 12; i++) {";
-  html += "    const row = document.createElement('tr');";
-  html += "    const enableCell = document.createElement('td');";
-  html += "    const enableInput = document.createElement('input');";
-  html += "    enableInput.type = 'checkbox';";
-  html += "    enableInput.id = `w-alarm-${i}-enabled`;";
-  html += "    enableInput.checked = settings.weekdayAlarms[i].enabled;";
-  html += "    enableCell.appendChild(enableInput);";
-  html += "    const hourCell = document.createElement('td');";
-  html += "    const hourInput = document.createElement('input');";
-  html += "    hourInput.type = 'number';";
-  html += "    hourInput.id = `w-alarm-${i}-hour`;";
-  html += "    hourInput.min = 0;";
-  html += "    hourInput.max = 23;";
-  html += "    hourInput.value = settings.weekdayAlarms[i].hour;";
-  html += "    hourCell.appendChild(hourInput);";
-  html += "    const minuteCell = document.createElement('td');";
-  html += "    const minuteInput = document.createElement('input');";
-  html += "    minuteInput.type = 'number';";
-  html += "    minuteInput.id = `w-alarm-${i}-minute`;";
-  html += "    minuteInput.min = 0;";
-  html += "    minuteInput.max = 59;";
-  html += "    minuteInput.value = settings.weekdayAlarms[i].minute;";
-  html += "    minuteCell.appendChild(minuteInput);";
-  html += "    const durationCell = document.createElement('td');";
-  html += "    const durationInput = document.createElement('input');";
-  html += "    durationInput.type = 'number';";
-  html += "    durationInput.id = `w-alarm-${i}-duration`;";
-  html += "    durationInput.min = a;";
-  html += "    durationInput.max = 60;";
-  html += "    durationInput.value = settings.weekdayAlarms[i].duration;";
-  html += "    durationCell.appendChild(durationInput);";
-  html += "    row.appendChild(enableCell);";
-  html += "    row.appendChild(hourCell);";
-  html += "    row.appendChild(minuteCell);";
-  html += "    row.appendChild(durationCell);";
-  html += "    weekdayTbody.appendChild(row);";
-  html += "  }";
-  html += "  // Update Friday alarms - similar code structure";
-  html += "  const fridayTbody = document.getElementById('friday-alarms');";
-  html += "  fridayTbody.innerHTML = '';";
-  html += "  for (let i = 0; i < 12; i++) {";
-  html += "    const row = document.createElement('tr');";
-  html += "    const enableCell = document.createElement('td');";
-  html += "    const enableInput = document.createElement('input');";
-  html += "    enableInput.type = 'checkbox';";
-  html += "    enableInput.id = `f-alarm-${i}-enabled`;";
-  html += "    enableInput.checked = settings.fridayAlarms[i].enabled;";
-  html += "    enableCell.appendChild(enableInput);";
-  html += "    const hourCell = document.createElement('td');";
-  html += "    const hourInput = document.createElement('input');";
-  html += "    hourInput.type = 'number';";
-  html += "    hourInput.id = `f-alarm-${i}-hour`;";
-  html += "    hourInput.min = 0;";
-  html += "    hourInput.max = 23;";
-  html += "    hourInput.value = settings.fridayAlarms[i].hour;";
-  html += "    hourCell.appendChild(hourInput);";
-  html += "    const minuteCell = document.createElement('td');";
-  html += "    const minuteInput = document.createElement('input');";
-  html += "    minuteInput.type = 'number';";
-  html += "    minuteInput.id = `f-alarm-${i}-minute`;";
-  html += "    minuteInput.min = 0;";
-  html += "    minuteInput.max = 59;";
-  html += "    minuteInput.value = settings.fridayAlarms[i].minute;";
-  html += "    minuteCell.appendChild(minuteInput);";
-  html += "    const durationCell = document.createElement('td');";
-  html += "    const durationInput = document.createElement('input');";
-  html += "    durationInput.type = 'number';";
-  html += "    durationInput.id = `f-alarm-${i}-duration`;";
-  html += "    durationInput.min = 1;";
-  html += "    durationInput.max = 60;";
-  html += "    durationInput.value = settings.fridayAlarms[i].duration;";
-  html += "    durationCell.appendChild(durationInput);";
-  html += "    row.appendChild(enableCell);";
-  html += "    row.appendChild(hourCell);";
-  html += "    row.appendChild(minuteCell);";
-  html += "    row.appendChild(durationCell);";
-  html += "    fridayTbody.appendChild(row);";
-  html += "  }";
-  html += "}";
-  
-  html += "function saveSettings(type) {";
-  html += "  const newSettings = {weekdayAlarms: [], fridayAlarms: []};";
-  html += "  // Gather weekday alarms";
-  html += "  for (let i = 0; i < 12; i++) {";
-  html += "    newSettings.weekdayAlarms.push({";
-  html += "      enabled: document.getElementById(`w-alarm-${i}-enabled`).checked,";
-  html += "      hour: parseInt(document.getElementById(`w-alarm-${i}-hour`).value),";
-  html += "      minute: parseInt(document.getElementById(`w-alarm-${i}-minute`).value),";
-  html += "      duration: parseInt(document.getElementById(`w-alarm-${i}-duration`).value)";
-  html += "    });";
-  html += "  }";
-  html += "  // Gather Friday alarms";
-  html += "  for (let i = 0; i < 12; i++) {";
-  html += "    newSettings.fridayAlarms.push({";
-  html += "      enabled: document.getElementById(`f-alarm-${i}-enabled`).checked,";
-  html += "      hour: parseInt(document.getElementById(`f-alarm-${i}-hour`).value),";
-  html += "      minute: parseInt(document.getElementById(`f-alarm-${i}-minute`).value),";
-  html += "      duration: parseInt(document.getElementById(`f-alarm-${i}-duration`).value)";
-  html += "    });";
-  html += "  }";
-  html += "  // Send to server";
-  html += "  fetch('/api/settings', {";
-  html += "    method: 'POST',";
-  html += "    headers: { 'Content-Type': 'application/json' },";
-  html += "    body: JSON.stringify(newSettings)";
-  html += "  })";
-  html += "  .then(response => response.json())";
-  html += "  .then(data => alert('Settings saved successfully'))";
-  html += "  .catch(error => alert('Error saving settings: ' + error));";
-  html += "}";
-  
-  // WiFi functions
-  html += "function initWifiStatus() {";
-  html += "  document.getElementById('wifi-ssid').value = stationSsid;";
-  html += "  document.getElementById('wifi-password').value = stationPassword;";
-  html += "  document.getElementById('wifi-status').innerText = isConnected ? 'Connected to ' + stationSsid : 'AP Mode Only';";
-  html += "  document.getElementById('ap-info').innerText = 'AP SSID: ' + apSsid + ' (IP: ' + apIp + ')';";
-  html += "  if (isConnected) {";
-  html += "    document.getElementById('sta-info').innerText = 'Station IP: ' + stationIp;";
-  html += "  }";
-  html += "}";
-  
+  // Save WiFi function
   html += "function saveWiFi() {";
-  html += "  const wifiData = {";
-  html += "    ssid: document.getElementById('wifi-ssid').value,";
-  html += "    password: document.getElementById('wifi-password').value";
+  html += "  var ssid = document.getElementById('wifi-ssid').value;";
+  html += "  var password = document.getElementById('wifi-password').value;";
+  
+  html += "  var data = {";
+  html += "    ssid: ssid,";
+  html += "    password: password";
   html += "  };";
+  
   html += "  fetch('/api/wifi', {";
   html += "    method: 'POST',";
   html += "    headers: { 'Content-Type': 'application/json' },";
-  html += "    body: JSON.stringify(wifiData)";
+  html += "    body: JSON.stringify(data)";
   html += "  })";
-  html += "  .then(response => response.json())";
-  html += "  .then(data => alert('WiFi settings saved. Reconnecting...'))";
-  html += "  .catch(error => alert('Error saving WiFi settings: ' + error));";
+  html += "  .then(function(response) { return response.json(); })";
+  html += "  .then(function(data) { alert('WiFi settings saved. Reconnecting...'); })";
+  html += "  .catch(function(error) { alert('Error saving WiFi settings: ' + error); });";
+  html += "}";
+  
+  // Settings and alarms functions
+  html += "function fetchSettings() {";
+  html += "  fetch('/api/settings')";
+  html += "  .then(function(response) { return response.json(); })";
+  html += "  .then(function(data) {";
+  html += "    // Populate weekday table";
+  html += "    var weekdayTable = document.getElementById('weekday-table');";
+  html += "    var fridayTable = document.getElementById('friday-table');";
+  
+  html += "    // Clear existing rows except header";
+  html += "    while (weekdayTable.rows.length > 1) { weekdayTable.deleteRow(1); }";
+  html += "    while (fridayTable.rows.length > 1) { fridayTable.deleteRow(1); }";
+  
+  html += "    // Add weekday alarms";
+  html += "    for (var i = 0; i < data.weekdayAlarms.length; i++) {";
+  html += "      var alarm = data.weekdayAlarms[i];";
+  html += "      var row = weekdayTable.insertRow(-1);";
+  
+  html += "      var cell1 = row.insertCell(0);";
+  html += "      var cell2 = row.insertCell(1);";
+  html += "      var cell3 = row.insertCell(2);";
+  html += "      var cell4 = row.insertCell(3);";
+  
+  html += "      cell1.innerHTML = '<input type=\"checkbox\" id=\"w-alarm-' + i + '-enabled\" ' + (alarm.enabled ? 'checked' : '') + '>';";
+  html += "      cell2.innerHTML = '<input type=\"number\" id=\"w-alarm-' + i + '-hour\" min=\"0\" max=\"23\" value=\"' + alarm.hour + '\">';";
+  html += "      cell3.innerHTML = '<input type=\"number\" id=\"w-alarm-' + i + '-minute\" min=\"0\" max=\"59\" value=\"' + alarm.minute + '\">';";
+  html += "      cell4.innerHTML = '<input type=\"number\" id=\"w-alarm-' + i + '-duration\" min=\"1\" max=\"60\" value=\"' + alarm.duration + '\">';";
+  html += "    }";
+  
+  html += "    // Add Friday alarms";
+  html += "    for (var i = 0; i < data.fridayAlarms.length; i++) {";
+  html += "      var alarm = data.fridayAlarms[i];";
+  html += "      var row = fridayTable.insertRow(-1);";
+  
+  html += "      var cell1 = row.insertCell(0);";
+  html += "      var cell2 = row.insertCell(1);";
+  html += "      var cell3 = row.insertCell(2);";
+  html += "      var cell4 = row.insertCell(3);";
+  
+  html += "      cell1.innerHTML = '<input type=\"checkbox\" id=\"f-alarm-' + i + '-enabled\" ' + (alarm.enabled ? 'checked' : '') + '>';";
+  html += "      cell2.innerHTML = '<input type=\"number\" id=\"f-alarm-' + i + '-hour\" min=\"0\" max=\"23\" value=\"' + alarm.hour + '\">';";
+  html += "      cell3.innerHTML = '<input type=\"number\" id=\"f-alarm-' + i + '-minute\" min=\"0\" max=\"59\" value=\"' + alarm.minute + '\">';";
+  html += "      cell4.innerHTML = '<input type=\"number\" id=\"f-alarm-' + i + '-duration\" min=\"1\" max=\"60\" value=\"' + alarm.duration + '\">';";
+  html += "    }";
+  html += "  })";
+  html += "  .catch(function(error) { console.error('Error fetching settings:', error); });";
+  html += "}";
+  
+  html += "function saveSettings() {";
+  html += "  var weekdayAlarms = [];";
+  html += "  var fridayAlarms = [];";
+  
+  html += "  // Collect weekday alarms";
+  html += "  for (var i = 0; i < 12; i++) {";
+  html += "    weekdayAlarms.push({";
+  html += "      enabled: document.getElementById('w-alarm-' + i + '-enabled').checked,";
+  html += "      hour: parseInt(document.getElementById('w-alarm-' + i + '-hour').value),";
+  html += "      minute: parseInt(document.getElementById('w-alarm-' + i + '-minute').value),";
+  html += "      duration: parseInt(document.getElementById('w-alarm-' + i + '-duration').value)";
+  html += "    });";
+  html += "  }";
+  
+  html += "  // Collect Friday alarms";
+  html += "  for (var i = 0; i < 12; i++) {";
+  html += "    fridayAlarms.push({";
+  html += "      enabled: document.getElementById('f-alarm-' + i + '-enabled').checked,";
+  html += "      hour: parseInt(document.getElementById('f-alarm-' + i + '-hour').value),";
+  html += "      minute: parseInt(document.getElementById('f-alarm-' + i + '-minute').value),";
+  html += "      duration: parseInt(document.getElementById('f-alarm-' + i + '-duration').value)";
+  html += "    });";
+  html += "  }";
+  
+  html += "  var data = {";
+  html += "    weekdayAlarms: weekdayAlarms,";
+  html += "    fridayAlarms: fridayAlarms";
+  html += "  };";
+  
+  html += "  fetch('/api/settings', {";
+  html += "    method: 'POST',";
+  html += "    headers: { 'Content-Type': 'application/json' },";
+  html += "    body: JSON.stringify(data)";
+  html += "  })";
+  html += "  .then(function(response) { return response.json(); })";
+  html += "  .then(function(data) { alert('Settings saved successfully'); })";
+  html += "  .catch(function(error) { alert('Error saving settings: ' + error); });";
+  html += "}";
+  
+  // Current time update function
+  html += "function updateTime() {";
+  html += "  fetch('/api/time')";
+  html += "  .then(function(response) { return response.json(); })";
+  html += "  .then(function(data) {";
+  html += "    var timeElem = document.getElementById('current-time');";
+  html += "    var dateElem = document.getElementById('current-date');";
+  
+  html += "    if (timeElem && dateElem) {";
+  html += "      // Format time as HH:MM:SS";
+  html += "      var hour = data.hour.toString().padStart(2, '0');";
+  html += "      var minute = data.minute.toString().padStart(2, '0');";
+  html += "      var second = data.second.toString().padStart(2, '0');";
+  html += "      timeElem.textContent = hour + ':' + minute + ':' + second;";
+  
+  html += "      // Format date as DD/MM/YYYY - Day";
+  html += "      var days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];";
+  html += "      dateElem.textContent = data.day + '/' + data.month + '/' + data.year + ' - ' + days[data.dayOfWeek];";
+  
+  html += "      // Update time setting inputs";
+  html += "      document.getElementById('time-hour').value = data.hour;";
+  html += "      document.getElementById('time-minute').value = data.minute;";
+  html += "      document.getElementById('time-second').value = data.second;";
+  html += "      document.getElementById('date-day').value = data.day;";
+  html += "      document.getElementById('date-month').value = data.month;";
+  html += "      document.getElementById('date-year').value = data.year;";
+  html += "    }";
+  html += "    setTimeout(updateTime, 1000); // Update every second";
+  html += "  })";
+  html += "  .catch(function(error) { console.error('Error updating time:', error); });";
   html += "}";
   
   // Initialize on page load
-  html += "document.addEventListener('DOMContentLoaded', function() {";
-  html += "  // Show status tab by default";
-  html += "  showTab('status');";
-  
-  html += "  // Add event listeners for tab buttons";
-  html += "  document.getElementById('statusBtn').addEventListener('click', function() { showTab('status'); });";
-  html += "  document.getElementById('weekdayBtn').addEventListener('click', function() { showTab('weekday'); });";
-  html += "  document.getElementById('fridayBtn').addEventListener('click', function() { showTab('friday'); });";
-  html += "  document.getElementById('timeBtn').addEventListener('click', function() { showTab('time'); });";
-  html += "  document.getElementById('wifiBtn').addEventListener('click', function() { showTab('wifi'); });";
-  
-  html += "  // Add event listeners for action buttons";
-  html += "  document.getElementById('refreshBtn').addEventListener('click', function() { location.reload(); });";
-  html += "  document.getElementById('save-time').addEventListener('click', saveTime);";
-  html += "  document.getElementById('save-weekday').addEventListener('click', function() { saveSettings('weekday'); });";
-  html += "  document.getElementById('save-friday').addEventListener('click', function() { saveSettings('friday'); });";
-  html += "  document.getElementById('save-wifi').addEventListener('click', saveWiFi);";
-  
-  html += "  // Initialize data";
-  html += "  fetchSettings();";
-  html += "  fetchTime();";
-  html += "  initWifiStatus();";
-  html += "});";
+  html += "window.onload = function() {";
+  html += "  openTab('status'); // Show status tab by default";
+  html += "  fetchSettings(); // Load settings";
+  html += "  updateTime(); // Start time updates";
+  html += "};";
   
   html += "</script>";
-  html += "</body>";
-  html += "</html>";
+  html += "</body></html>";
   
   server.send(200, "text/html", html);
 }
