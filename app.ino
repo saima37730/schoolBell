@@ -327,6 +327,149 @@ void handleRoot() {
   html += ".tab button.active { background-color: #ccc; }";
   html += ".tabcontent { display: none; padding: 12px; border: 1px solid #ccc; border-top: none; }";
   html += "</style>";
+  
+  // Add the script tag in the head section
+  html += "<script>";
+  html += "// Global variables";
+  html += "let settings = {};";
+  html += "let currentTime = {};";
+  
+  html += "// Tab switching function";
+  html += "function openTab(evt, tabName) {";
+  html += "  var i, tabcontent, tablinks;";
+  html += "  tabcontent = document.getElementsByClassName('tabcontent');";
+  html += "  for (i = 0; i < tabcontent.length; i++) {";
+  html += "    tabcontent[i].style.display = 'none';";
+  html += "  }";
+  html += "  tablinks = document.getElementsByClassName('tablinks');";
+  html += "  for (i = 0; i < tablinks.length; i++) {";
+  html += "    tablinks[i].className = tablinks[i].className.replace(' active', '');";
+  html += "  }";
+  html += "  document.getElementById(tabName).style.display = 'block';";
+  html += "  evt.currentTarget.className += ' active';";
+  html += "}";
+  
+  html += "// Save time settings";
+  html += "function saveTime() {";
+  html += "  const timeData = {";
+  html += "    hour: parseInt(document.getElementById('time-hour').value),";
+  html += "    minute: parseInt(document.getElementById('time-minute').value),";
+  html += "    second: parseInt(document.getElementById('time-second').value),";
+  html += "    day: parseInt(document.getElementById('date-day').value),";
+  html += "    month: parseInt(document.getElementById('date-month').value),";
+  html += "    year: parseInt(document.getElementById('date-year').value)";
+  html += "  };";
+  html += "  fetch('/api/time', {";
+  html += "    method: 'POST',";
+  html += "    headers: { 'Content-Type': 'application/json' },";
+  html += "    body: JSON.stringify(timeData)";
+  html += "  })";
+  html += "  .then(response => response.json())";
+  html += "  .then(data => alert('Time set successfully'))";
+  html += "  .catch(error => alert('Error setting time: ' + error));";
+  html += "}";
+  
+  html += "// Save alarm settings";
+  html += "function saveSettings() {";
+  html += "  const newSettings = {weekdayAlarms: [], fridayAlarms: []};";
+  html += "  // Gather weekday alarms";
+  html += "  for(let i = 0; i < 12; i++) {";
+  html += "    newSettings.weekdayAlarms.push({";
+  html += "      enabled: document.getElementById('w-alarm-' + i + '-enabled').checked,";
+  html += "      hour: parseInt(document.getElementById('w-alarm-' + i + '-hour').value),";
+  html += "      minute: parseInt(document.getElementById('w-alarm-' + i + '-minute').value),";
+  html += "      duration: parseInt(document.getElementById('w-alarm-' + i + '-duration').value)";
+  html += "    });";
+  html += "  }";
+  html += "  // Gather Friday alarms";
+  html += "  for(let i = 0; i < 12; i++) {";
+  html += "    newSettings.fridayAlarms.push({";
+  html += "      enabled: document.getElementById('f-alarm-' + i + '-enabled').checked,";
+  html += "      hour: parseInt(document.getElementById('f-alarm-' + i + '-hour').value),";
+  html += "      minute: parseInt(document.getElementById('f-alarm-' + i + '-minute').value),";
+  html += "      duration: parseInt(document.getElementById('f-alarm-' + i + '-duration').value)";
+  html += "    });";
+  html += "  }";
+  html += "  // Send to server";
+  html += "  fetch('/api/settings', {";
+  html += "    method: 'POST',";
+  html += "    headers: { 'Content-Type': 'application/json' },";
+  html += "    body: JSON.stringify(newSettings)";
+  html += "  })";
+  html += "  .then(response => response.json())";
+  html += "  .then(data => alert('Settings saved successfully'))";
+  html += "  .catch(error => alert('Error saving settings: ' + error));";
+  html += "}";
+  
+  html += "// Save WiFi settings";
+  html += "function saveWiFi() {";
+  html += "  const wifiData = {";
+  html += "    ssid: document.getElementById('wifi-ssid').value,";
+  html += "    password: document.getElementById('wifi-password').value";
+  html += "  };";
+  html += "  fetch('/api/wifi', {";
+  html += "    method: 'POST',";
+  html += "    headers: { 'Content-Type': 'application/json' },";
+  html += "    body: JSON.stringify(wifiData)";
+  html += "  })";
+  html += "  .then(response => response.json())";
+  html += "  .then(data => alert('WiFi settings saved. Reconnecting...'))";
+  html += "  .catch(error => alert('Error saving WiFi settings: ' + error));";
+  html += "}";
+  
+  html += "// Fetch settings from server";
+  html += "function fetchSettings() {";
+  html += "  fetch('/api/settings').then(response => response.json())";
+  html += "  .then(data => { settings = data; updateSettingsUI(); })";
+  html += "  .catch(error => alert('Error fetching settings: ' + error));";
+  html += "}";
+  
+  html += "// Update UI with settings data";
+  html += "function updateSettingsUI() {";
+  html += "  // Update weekday alarms";
+  html += "  for(let i = 0; i < 12; i++) {";
+  html += "    document.getElementById('w-alarm-' + i + '-enabled').checked = settings.weekdayAlarms[i].enabled;";
+  html += "    document.getElementById('w-alarm-' + i + '-hour').value = settings.weekdayAlarms[i].hour;";
+  html += "    document.getElementById('w-alarm-' + i + '-minute').value = settings.weekdayAlarms[i].minute;";
+  html += "    document.getElementById('w-alarm-' + i + '-duration').value = settings.weekdayAlarms[i].duration;";
+  html += "  }";
+  html += "  // Update Friday alarms";
+  html += "  for(let i = 0; i < 12; i++) {";
+  html += "    document.getElementById('f-alarm-' + i + '-enabled').checked = settings.fridayAlarms[i].enabled;";
+  html += "    document.getElementById('f-alarm-' + i + '-hour').value = settings.fridayAlarms[i].hour;";
+  html += "    document.getElementById('f-alarm-' + i + '-minute').value = settings.fridayAlarms[i].minute;";
+  html += "    document.getElementById('f-alarm-' + i + '-duration').value = settings.fridayAlarms[i].duration;";
+  html += "  }";
+  html += "}";
+  
+  html += "// Fetch time from server";
+  html += "function fetchTime() {";
+  html += "  fetch('/api/time').then(response => response.json())";
+  html += "  .then(data => { currentTime = data; updateTimeUI(); })";
+  html += "  .catch(error => alert('Error fetching time: ' + error));";
+  html += "}";
+  
+  html += "// Update UI with time data";
+  html += "function updateTimeUI() {";
+  html += "  document.getElementById('current-time').innerText = ";
+  html += "    `${currentTime.hour.toString().padStart(2, '0')}:${currentTime.minute.toString().padStart(2, '0')}:${currentTime.second.toString().padStart(2, '0')}`;";
+  html += "  document.getElementById('current-date').innerText = ";
+  html += "    `${currentTime.day}/${currentTime.month}/${currentTime.year} - ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][currentTime.dayOfWeek]}`;";
+  html += "  document.getElementById('time-hour').value = currentTime.hour;";
+  html += "  document.getElementById('time-minute').value = currentTime.minute;";
+  html += "  document.getElementById('time-second').value = currentTime.second;";
+  html += "  document.getElementById('date-day').value = currentTime.day;";
+  html += "  document.getElementById('date-month').value = currentTime.month;";
+  html += "  document.getElementById('date-year').value = currentTime.year;";
+  html += "  setTimeout(fetchTime, 1000);"; // Update time every second
+  html += "}";
+  
+  html += "// Initialize on page load";
+  html += "document.addEventListener('DOMContentLoaded', function() {";
+  html += "  fetchSettings();";
+  html += "  fetchTime();";
+  html += "});";
+  html += "</script>";
   html += "</head>";
   
   html += "<body>";
@@ -428,135 +571,6 @@ void handleRoot() {
   html += "</table>";
   html += "<button onclick='saveWiFi()'>Save WiFi Settings</button>";
   html += "</div>";
-
-  html += "<script>";
-  // Define all functions
-  html += "function openTab(evt, tabName) {";
-  html += "  var i, tabcontent, tablinks;";
-  html += "  tabcontent = document.getElementsByClassName('tabcontent');";
-  html += "  for (i = 0; i < tabcontent.length; i++) {";
-  html += "    tabcontent[i].style.display = 'none';";
-  html += "  }";
-  html += "  tablinks = document.getElementsByClassName('tablinks');";
-  html += "  for (i = 0; i < tablinks.length; i++) {";
-  html += "    tablinks[i].className = tablinks[i].className.replace(' active', '');";
-  html += "  }";
-  html += "  document.getElementById(tabName).style.display = 'block';";
-  html += "  evt.currentTarget.className += ' active';";
-  html += "}";
-
-  html += "function saveTime() {";
-  html += "  const timeData = {";
-  html += "    hour: parseInt(document.getElementById('time-hour').value),";
-  html += "    minute: parseInt(document.getElementById('time-minute').value),";
-  html += "    second: parseInt(document.getElementById('time-second').value),";
-  html += "    day: parseInt(document.getElementById('date-day').value),";
-  html += "    month: parseInt(document.getElementById('date-month').value),";
-  html += "    year: parseInt(document.getElementById('date-year').value)";
-  html += "  };";
-  html += "  fetch('/api/time', {";
-  html += "    method: 'POST',";
-  html += "    headers: { 'Content-Type': 'application/json' },";
-  html += "    body: JSON.stringify(timeData)";
-  html += "  })";
-  html += "  .then(response => response.json())";
-  html += "  .then(data => alert('Time set successfully'))";
-  html += "  .catch(error => alert('Error setting time: ' + error));";
-  html += "}";
-
-  html += "function saveSettings() {";
-  html += "  const newSettings = {weekdayAlarms: [], fridayAlarms: []};";
-  html += "  // Gather weekday alarms";
-  html += "  for(let i = 0; i < 12; i++) {";
-  html += "    newSettings.weekdayAlarms.push({";
-  html += "      enabled: document.getElementById('w-alarm-' + i + '-enabled').checked,";
-  html += "      hour: parseInt(document.getElementById('w-alarm-' + i + '-hour').value),";
-  html += "      minute: parseInt(document.getElementById('w-alarm-' + i + '-minute').value),";
-  html += "      duration: parseInt(document.getElementById('w-alarm-' + i + '-duration').value)";
-  html += "    });";
-  html += "  }";
-  html += "  // Gather Friday alarms";
-  html += "  for(let i = 0; i < 12; i++) {";
-  html += "    newSettings.fridayAlarms.push({";
-  html += "      enabled: document.getElementById('f-alarm-' + i + '-enabled').checked,";
-  html += "      hour: parseInt(document.getElementById('f-alarm-' + i + '-hour').value),";
-  html += "      minute: parseInt(document.getElementById('f-alarm-' + i + '-minute').value),";
-  html += "      duration: parseInt(document.getElementById('f-alarm-' + i + '-duration').value)";
-  html += "    });";
-  html += "  }";
-  html += "  // Send to server";
-  html += "  fetch('/api/settings', {";
-  html += "    method: 'POST',";
-  html += "    headers: { 'Content-Type': 'application/json' },";
-  html += "    body: JSON.stringify(newSettings)";
-  html += "  })";
-  html += "  .then(response => response.json())";
-  html += "  .then(data => alert('Settings saved successfully'))";
-  html += "  .catch(error => alert('Error saving settings: ' + error));";
-  html += "}";
-
-  html += "function saveWiFi() {";
-  html += "  const wifiData = {";
-  html += "    ssid: document.getElementById('wifi-ssid').value,";
-  html += "    password: document.getElementById('wifi-password').value";
-  html += "  };";
-  html += "  fetch('/api/wifi', {";
-  html += "    method: 'POST',";
-  html += "    headers: { 'Content-Type': 'application/json' },";
-  html += "    body: JSON.stringify(wifiData)";
-  html += "  })";
-  html += "  .then(response => response.json())";
-  html += "  .then(data => alert('WiFi settings saved. Reconnecting...'))";
-  html += "  .catch(error => alert('Error saving WiFi settings: ' + error));";
-  html += "}";
-
-  html += "function fetchSettings() {";
-  html += "  fetch('/api/settings').then(response => response.json())";
-  html += "  .then(data => { settings = data; updateSettingsUI(); })";
-  html += "  .catch(error => alert('Error fetching settings: ' + error));";
-  html += "}";
-
-  html += "function updateSettingsUI() {";
-  html += "  // Update weekday alarms";
-  html += "  for(let i = 0; i < 12; i++) {";
-  html += "    document.getElementById('w-alarm-' + i + '-enabled').checked = settings.weekdayAlarms[i].enabled;";
-  html += "    document.getElementById('w-alarm-' + i + '-hour').value = settings.weekdayAlarms[i].hour;";
-  html += "    document.getElementById('w-alarm-' + i + '-minute').value = settings.weekdayAlarms[i].minute;";
-  html += "    document.getElementById('w-alarm-' + i + '-duration').value = settings.weekdayAlarms[i].duration;";
-  html += "  }";
-  html += "  // Update Friday alarms";
-  html += "  for(let i = 0; i < 12; i++) {";
-  html += "    document.getElementById('f-alarm-' + i + '-enabled').checked = settings.fridayAlarms[i].enabled;";
-  html += "    document.getElementById('f-alarm-' + i + '-hour').value = settings.fridayAlarms[i].hour;";
-  html += "    document.getElementById('f-alarm-' + i + '-minute').value = settings.fridayAlarms[i].minute;";
-  html += "    document.getElementById('f-alarm-' + i + '-duration').value = settings.fridayAlarms[i].duration;";
-  html += "  }";
-  html += "}";
-
-  html += "function fetchTime() {";
-  html += "  fetch('/api/time').then(response => response.json())";
-  html += "  .then(data => { currentTime = data; updateTimeUI(); })";
-  html += "  .catch(error => alert('Error fetching time: ' + error));";
-  html += "}";
-
-  html += "function updateTimeUI() {";
-  html += "  document.getElementById('current-time').innerText = ";
-  html += "    `${currentTime.hour.toString().padStart(2, '0')}:${currentTime.minute.toString().padStart(2, '0')}:${currentTime.second.toString().padStart(2, '0')}`;";
-  html += "  document.getElementById('current-date').innerText = ";
-  html += "    `${currentTime.day}/${currentTime.month}/${currentTime.year} - ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][currentTime.dayOfWeek]}`;";
-  html += "  document.getElementById('time-hour').value = currentTime.hour;";
-  html += "  document.getElementById('time-minute').value = currentTime.minute;";
-  html += "  document.getElementById('time-second').value = currentTime.second;";
-  html += "  document.getElementById('date-day').value = currentTime.day;";
-  html += "  document.getElementById('date-month').value = currentTime.month;";
-  html += "  document.getElementById('date-year').value = currentTime.year;";
-  html += "  setTimeout(fetchTime, 1000);"; // Update time every second
-  html += "}";
-
-  // Global variables and initialization
-  html += "let settings = {}; let currentTime = {};";
-  html += "window.onload = function() { fetchSettings(); fetchTime(); };";
-  html += "</script>";
   
   html += "</body></html>";
   
