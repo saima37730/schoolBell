@@ -327,6 +327,107 @@ void handleRoot() {
   html += ".tab button.active { background-color: #ccc; }";
   html += ".tabcontent { display: none; padding: 12px; border: 1px solid #ccc; border-top: none; }";
   html += "</style>";
+  html += "</head>";
+  
+  html += "<body>";
+  html += "<h1>School Bell System</h1>";
+  
+  html += "<div class='tab'>";
+  html += "<button class='tablinks active' onclick=\"openTab(event, 'status')\">Status</button>";
+  html += "<button class='tablinks' onclick=\"openTab(event, 'weekday')\">Weekday Alarms</button>";
+  html += "<button class='tablinks' onclick=\"openTab(event, 'friday')\">Friday Alarms</button>";
+  html += "<button class='tablinks' onclick=\"openTab(event, 'time')\">Set Time</button>";
+  html += "<button class='tablinks' onclick=\"openTab(event, 'wifi')\">WiFi Settings</button>";
+  html += "</div>";
+  
+  // Status tab
+  html += "<div id='status' class='tabcontent' style='display:block;'>";
+  html += "<h2>Current Status</h2>";
+  html += "<p>Time: <span id='current-time'>00:00:00</span></p>";
+  html += "<p>Date: <span id='current-date'>01/01/2000 - Mon</span></p>";
+  html += "<button onclick='location.reload()'>Refresh Page</button>";
+  html += "</div>";
+  
+  // Weekday alarms tab
+  html += "<div id='weekday' class='tabcontent'>";
+  html += "<h2>Weekday Alarms (Monday-Thursday)</h2>";
+  html += "<table>";
+  html += "<tr><th>Enable</th><th>Hour</th><th>Minute</th><th>Duration (sec)</th></tr>";
+  
+  for (int i = 0; i < 12; i++) {
+    html += "<tr>";
+    html += "<td><input type='checkbox' id='w-alarm-" + String(i) + "-enabled'></td>";
+    html += "<td><input type='number' id='w-alarm-" + String(i) + "-hour' min='0' max='23'></td>";
+    html += "<td><input type='number' id='w-alarm-" + String(i) + "-minute' min='0' max='59'></td>";
+    html += "<td><input type='number' id='w-alarm-" + String(i) + "-duration' min='1' max='60'></td>";
+    html += "</tr>";
+  }
+  
+  html += "</table>";
+  html += "<button onclick='saveSettings()'>Save Weekday Alarms</button>";
+  html += "</div>";
+  
+  // Friday alarms tab
+  html += "<div id='friday' class='tabcontent'>";
+  html += "<h2>Friday Alarms</h2>";
+  html += "<table>";
+  html += "<tr><th>Enable</th><th>Hour</th><th>Minute</th><th>Duration (sec)</th></tr>";
+  
+  for (int i = 0; i < 12; i++) {
+    html += "<tr>";
+    html += "<td><input type='checkbox' id='f-alarm-" + String(i) + "-enabled'></td>";
+    html += "<td><input type='number' id='f-alarm-" + String(i) + "-hour' min='0' max='23'></td>";
+    html += "<td><input type='number' id='f-alarm-" + String(i) + "-minute' min='0' max='59'></td>";
+    html += "<td><input type='number' id='f-alarm-" + String(i) + "-duration' min='1' max='60'></td>";
+    html += "</tr>";
+  }
+  
+  html += "</table>";
+  html += "<button onclick='saveSettings()'>Save Friday Alarms</button>";
+  html += "</div>";
+  
+  // Set time tab
+  html += "<div id='time' class='tabcontent'>";
+  html += "<h2>Set Time & Date</h2>";
+  html += "<table>";
+  html += "<tr><th>Hour</th><th>Minute</th><th>Second</th></tr>";
+  html += "<tr>";
+  html += "<td><input type='number' id='time-hour' min='0' max='23'></td>";
+  html += "<td><input type='number' id='time-minute' min='0' max='59'></td>";
+  html += "<td><input type='number' id='time-second' min='0' max='59'></td>";
+  html += "</tr>";
+  html += "</table>";
+  
+  html += "<table>";
+  html += "<tr><th>Day</th><th>Month</th><th>Year</th></tr>";
+  html += "<tr>";
+  html += "<td><input type='number' id='date-day' min='1' max='31'></td>";
+  html += "<td><input type='number' id='date-month' min='1' max='12'></td>";
+  html += "<td><input type='number' id='date-year' min='2000' max='2099'></td>";
+  html += "</tr>";
+  html += "</table>";
+  
+  html += "<button onclick='saveTime()'>Set Time & Date</button>";
+  html += "</div>";
+  
+  // WiFi settings tab
+  html += "<div id='wifi' class='tabcontent'>";
+  html += "<h2>WiFi Settings</h2>";
+  html += "<p>Current connection mode: ";
+  html += (WiFi.status() == WL_CONNECTED) ? "Connected to " + station_ssid : "AP Mode Only";
+  html += "</p>";
+  html += "<p>AP SSID: " + String(ap_ssid) + " (IP: " + WiFi.softAPIP().toString() + ")</p>";
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    html += "<p>Station IP: " + WiFi.localIP().toString() + "</p>";
+  }
+  
+  html += "<table>";
+  html += "<tr><th>WiFi SSID</th><td><input type='text' id='wifi-ssid' value='" + station_ssid + "'></td></tr>";
+  html += "<tr><th>WiFi Password</th><td><input type='password' id='wifi-password' value='" + station_password + "'></td></tr>";
+  html += "</table>";
+  html += "<button onclick='saveWiFi()'>Save WiFi Settings</button>";
+  html += "</div>";
 
   html += "<script>";
   // Define all functions
@@ -454,110 +555,8 @@ void handleRoot() {
 
   // Global variables and initialization
   html += "let settings = {}; let currentTime = {};";
-  html += "window.onload = function() { init(); };";
-  html += "function init() { fetchSettings(); fetchTime(); }";
+  html += "window.onload = function() { fetchSettings(); fetchTime(); };";
   html += "</script>";
-  html += "</head>";
-  
-  html += "<body>";
-  html += "<h1>School Bell System</h1>";
-  
-  html += "<div class='tab'>";
-  html += "<button class='tablinks active' onclick='openTab(event, \"status\")'>Status</button>";
-  html += "<button class='tablinks' onclick='openTab(event, \"weekday\")'>Weekday Alarms</button>";
-  html += "<button class='tablinks' onclick='openTab(event, \"friday\")'>Friday Alarms</button>";
-  html += "<button class='tablinks' onclick='openTab(event, \"time\")'>Set Time</button>";
-  html += "<button class='tablinks' onclick='openTab(event, \"wifi\")'>WiFi Settings</button>";
-  html += "</div>";
-  
-  // Status tab
-  html += "<div id='status' class='tabcontent' style='display:block;'>";
-  html += "<h2>Current Status</h2>";
-  html += "<p>Time: <span id='current-time'>00:00:00</span></p>";
-  html += "<p>Date: <span id='current-date'>01/01/2000 - Mon</span></p>";
-  html += "<button onclick='location.reload()'>Refresh Page</button>";
-  html += "</div>";
-  
-  // Weekday alarms tab
-  html += "<div id='weekday' class='tabcontent'>";
-  html += "<h2>Weekday Alarms (Monday-Thursday)</h2>";
-  html += "<table>";
-  html += "<tr><th>Enable</th><th>Hour</th><th>Minute</th><th>Duration (sec)</th></tr>";
-  
-  for (int i = 0; i < 12; i++) {
-    html += "<tr>";
-    html += "<td><input type='checkbox' id='w-alarm-" + String(i) + "-enabled'></td>";
-    html += "<td><input type='number' id='w-alarm-" + String(i) + "-hour' min='0' max='23'></td>";
-    html += "<td><input type='number' id='w-alarm-" + String(i) + "-minute' min='0' max='59'></td>";
-    html += "<td><input type='number' id='w-alarm-" + String(i) + "-duration' min='1' max='60'></td>";
-    html += "</tr>";
-  }
-  
-  html += "</table>";
-  html += "<button onclick='saveSettings()'>Save Weekday Alarms</button>";
-  html += "</div>";
-  
-  // Friday alarms tab
-  html += "<div id='friday' class='tabcontent'>";
-  html += "<h2>Friday Alarms</h2>";
-  html += "<table>";
-  html += "<tr><th>Enable</th><th>Hour</th><th>Minute</th><th>Duration (sec)</th></tr>";
-  
-  for (int i = 0; i < 12; i++) {
-    html += "<tr>";
-    html += "<td><input type='checkbox' id='f-alarm-" + String(i) + "-enabled'></td>";
-    html += "<td><input type='number' id='f-alarm-" + String(i) + "-hour' min='0' max='23'></td>";
-    html += "<td><input type='number' id='f-alarm-" + String(i) + "-minute' min='0' max='59'></td>";
-    html += "<td><input type='number' id='f-alarm-" + String(i) + "-duration' min='1' max='60'></td>";
-    html += "</tr>";
-  }
-  
-  html += "</table>";
-  html += "<button onclick='saveSettings()'>Save Friday Alarms</button>";
-  html += "</div>";
-  
-  // Set time tab
-  html += "<div id='time' class='tabcontent'>";
-  html += "<h2>Set Time & Date</h2>";
-  html += "<table>";
-  html += "<tr><th>Hour</th><th>Minute</th><th>Second</th></tr>";
-  html += "<tr>";
-  html += "<td><input type='number' id='time-hour' min='0' max='23'></td>";
-  html += "<td><input type='number' id='time-minute' min='0' max='59'></td>";
-  html += "<td><input type='number' id='time-second' min='0' max='59'></td>";
-  html += "</tr>";
-  html += "</table>";
-  
-  html += "<table>";
-  html += "<tr><th>Day</th><th>Month</th><th>Year</th></tr>";
-  html += "<tr>";
-  html += "<td><input type='number' id='date-day' min='1' max='31'></td>";
-  html += "<td><input type='number' id='date-month' min='1' max='12'></td>";
-  html += "<td><input type='number' id='date-year' min='2000' max='2099'></td>";
-  html += "</tr>";
-  html += "</table>";
-  
-  html += "<button onclick='saveTime()'>Set Time & Date</button>";
-  html += "</div>";
-  
-  // WiFi settings tab
-  html += "<div id='wifi' class='tabcontent'>";
-  html += "<h2>WiFi Settings</h2>";
-  html += "<p>Current connection mode: ";
-  html += (WiFi.status() == WL_CONNECTED) ? "Connected to " + station_ssid : "AP Mode Only";
-  html += "</p>";
-  html += "<p>AP SSID: " + String(ap_ssid) + " (IP: " + WiFi.softAPIP().toString() + ")</p>";
-  
-  if (WiFi.status() == WL_CONNECTED) {
-    html += "<p>Station IP: " + WiFi.localIP().toString() + "</p>";
-  }
-  
-  html += "<table>";
-  html += "<tr><th>WiFi SSID</th><td><input type='text' id='wifi-ssid' value='" + station_ssid + "'></td></tr>";
-  html += "<tr><th>WiFi Password</th><td><input type='password' id='wifi-password' value='" + station_password + "'></td></tr>";
-  html += "</table>";
-  html += "<button onclick='saveWiFi()'>Save WiFi Settings</button>";
-  html += "</div>";
   
   html += "</body></html>";
   
