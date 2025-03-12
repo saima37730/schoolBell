@@ -1,12 +1,35 @@
+/*
+
+Version 2.0
+fully functional project with thease featurs
+previous features.
+wifi setting 
+sta mode
+ap mode
+
+in this update. v 2.0
+max7219 display.
+
+*/
+
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <Wire.h>
 #include <RTClib.h>
 #include <EEPROM.h>
 #include <ArduinoJson.h>
+#include <MD_Parola.h>
+#include <MD_MAX72xx.h>
+#include <SPI.h>
 
 // Pin definitions
 #define RELAY_PIN D3  // Changed from D1 to avoid conflict with I2C SCL pin
+// Define the hardware type, size and output pins for MAX7219
+#define HARDWARE_TYPE MD_MAX72XX::FC16_HW
+#define MAX_DEVICES 4  // Number of modules connected (adjust based on your setup)
+#define CS_PIN D8      // CS pin for MAX7219
+#define DATA_PIN D7    // DATA pin (MOSI)
+#define CLK_PIN D5     // CLK pin (SCK)
 
 // RTC setup
 RTC_DS3231 rtc;
@@ -14,6 +37,19 @@ RTC_DS3231 rtc;
 //Bell Duration
 int Duration = 2;
 int bellDuration = Duration * 1000;
+
+// Create a new instance of the MD_Parola class for scrolling text
+MD_Parola matrix = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
+
+// Variables for time display
+char timeBuffer[10];  // Buffer to hold the time string (HH:MM:SS)
+char dateBuffer[12];  // Buffer to hold the date string (YYYY-MM-DD)
+unsigned long lastDisplayUpdate = 0;
+const int displayUpdateInterval = 1000;      // Update display every second
+int displayMode = 0;                         // 0 = time, 1 = date, 2 = day of week
+const int displayModeChangeInterval = 5000;  // Change display mode every 5 seconds
+unsigned long lastModeChange = 0;
+
 
 // WiFi and server setup
 const char* ap_ssid = "SchoolBell_AP";
@@ -36,10 +72,11 @@ Alarm fridayAlarms[12];
 
 // EEPROM addresses
 #define EEPROM_SIZE 512
-#define WIFI_SSID_ADDR 0
-#define WIFI_PASS_ADDR 32
-#define REGULAR_ALARMS_ADDR 64
-#define FRIDAY_ALARMS_ADDR 256
+#define EEPROM_INITIALIZED_ADDR 0  // Add this line - dedicated address for initialization flag
+#define WIFI_SSID_ADDR 32
+#define WIFI_PASS_ADDR 64        // Adjusted to avoid potential overlap
+#define REGULAR_ALARMS_ADDR 128  // Adjusted to avoid potential overlap
+#define FRIDAY_ALARMS_ADDR 320   // Adjusted to avoid potential overlap
 
 void setup() {
   Serial.begin(115200);
@@ -64,6 +101,8 @@ void setup() {
     Serial.println("RTC lost power, setting default time!");
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   }
+  // Initialize the MAX7219 LED Matrix
+  setupMatrix();
 
   // Initialize default alarms if needed
   initializeDefaultAlarms();
@@ -79,15 +118,24 @@ void setup() {
 
   Serial.println("School Bell System is ready!");
 }
+
 void loop() {
   server.handleClient();
   checkAlarms();
+
+  // Update the matrix display
+  matrix.displayAnimate();
+  updateMatrixDisplay();
+
   delay(100);
 }
 
 void setupWiFi() {
   // First try to connect to stored WiFi network
   if (strlen(sta_ssid) > 0) {
+    Serial.print("Found stored WiFi credentials for: ");
+    Serial.println(sta_ssid);
+
     WiFi.mode(WIFI_AP_STA);
     WiFi.begin(sta_ssid, sta_password);
 
@@ -108,10 +156,13 @@ void setupWiFi() {
     } else {
       Serial.println("");
       Serial.println("Failed to connect to stored network, falling back to AP mode only");
+      // Add a small delay before disconnecting and switching mode
+      delay(1000);
       WiFi.disconnect();
       WiFi.mode(WIFI_AP);
     }
   } else {
+    Serial.println("No stored WiFi credentials found, starting in AP mode only");
     WiFi.mode(WIFI_AP);
   }
 
@@ -121,6 +172,109 @@ void setupWiFi() {
   Serial.println(WiFi.softAPIP());
 }
 
+void setupMatrix() {
+  // Initialize the MAX7219 display
+  matrix.begin();
+
+  // Set the intensity (brightness) of the display (0-15)
+  matrix.setIntensity(8);
+
+  // Clear the display
+  matrix.displayClear();
+
+  // Set text alignment (center, left, right)
+  matrix.setTextAlignment(PA_CENTER);
+
+  // Set scroll speed
+  matrix.setSpeed(100);
+
+  // No scrolling effect for time display
+  matrix.setPause(1000);
+  matrix.setTextEffect(PA_NO_EFFECT, PA_NO_EFFECT);
+
+  Serial.println("MAX7219 Matrix initialized");
+}
+
+// Update display based on current mode
+void updateMatrixDisplay() {
+  DateTime now = rtc.now();
+
+  if (millis() - lastModeChange > displayModeChangeInterval) {
+    displayMode = (displayMode + 1) % 3;  // Cycle through display modes
+    lastModeChange = millis();
+    matrix.displayClear();
+  }
+
+  switch (displayMode) {
+    case 0:  // Time display (HH:MM)
+      sprintf(timeBuffer, "%02d:%02d", now.hour(), now.minute());
+      if (!matrix.getTextProgress() && (millis() - lastDisplayUpdate > displayUpdateInterval)) {
+        matrix.setTextEffect(PA_NO_EFFECT, PA_NO_EFFECT);
+        matrix.setPause(1000);
+        matrix.displayText(timeBuffer, PA_CENTER, 0, 0, PA_NO_EFFECT, PA_NO_EFFECT);
+        lastDisplayUpdate = millis();
+      }
+      break;
+
+    case 1:  // Date display (MM-DD)
+      sprintf(dateBuffer, "%02d-%02d", now.month(), now.day());
+      if (!matrix.getTextProgress() && (millis() - lastDisplayUpdate > displayUpdateInterval)) {
+        matrix.setTextEffect(PA_SCROLL_LEFT, PA_SCROLL_LEFT);
+        matrix.setPause(1000);
+        matrix.displayText(dateBuffer, PA_LEFT, 100, 1000, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
+        lastDisplayUpdate = millis();
+      }
+      break;
+
+    case 2:  // Day of week display
+      const char* dayOfWeek;
+      switch (now.dayOfTheWeek()) {
+        case 0: dayOfWeek = "SUN"; break;
+        case 1: dayOfWeek = "MON"; break;
+        case 2: dayOfWeek = "TUE"; break;
+        case 3: dayOfWeek = "WED"; break;
+        case 4: dayOfWeek = "THU"; break;
+        case 5: dayOfWeek = "FRI"; break;
+        case 6: dayOfWeek = "SAT"; break;
+      }
+      if (!matrix.getTextProgress() && (millis() - lastDisplayUpdate > displayUpdateInterval)) {
+        matrix.setTextEffect(PA_SCROLL_LEFT, PA_SCROLL_LEFT);
+        matrix.setPause(1000);
+        matrix.displayText(dayOfWeek, PA_LEFT, 100, 1000, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
+        lastDisplayUpdate = millis();
+      }
+      break;
+  }
+}
+
+void handleSetBrightness() {
+  if (server.hasArg("plain")) {
+    String json = server.arg("plain");
+    DynamicJsonDocument doc(64);
+    DeserializationError error = deserializeJson(doc, json);
+
+    if (error) {
+      server.send(400, "application/json", "{\"success\":false,\"message\":\"Invalid JSON\"}");
+      return;
+    }
+
+    if (doc.containsKey("brightness")) {
+      int brightness = doc["brightness"].as<int>();
+
+      // Validate brightness range (0-15)
+      if (brightness >= 0 && brightness <= 15) {
+        matrix.setIntensity(brightness);
+        server.send(200, "application/json", "{\"success\":true}");
+      } else {
+        server.send(400, "application/json", "{\"success\":false,\"message\":\"Brightness must be between 0 and 15\"}");
+      }
+    } else {
+      server.send(400, "application/json", "{\"success\":false,\"message\":\"Brightness value is required\"}");
+    }
+  } else {
+    server.send(400, "application/json", "{\"success\":false,\"message\":\"No data received\"}");
+  }
+}
 
 void setupWebServer() {
   // Main page
@@ -136,14 +290,16 @@ void setupWebServer() {
   server.on("/api/time", HTTP_POST, handleSetTime);
   server.on("/api/bell/test", HTTP_POST, handleTestBell);
 
+  // Add new endpoint for display brightness
+  server.on("/api/display/brightness", HTTP_POST, handleSetBrightness);
+
   // Start server
   server.begin();
   Serial.println("HTTP server started");
 }
-// Initialize alarm data with defaults if not already initialized
 void initializeDefaultAlarms() {
   // Check if alarms have been initialized before
-  bool initialized = EEPROM.read(0) == 0xAA;
+  bool initialized = EEPROM.read(EEPROM_INITIALIZED_ADDR) == 0xAA;
 
   if (!initialized) {
     Serial.println("Initializing default alarms...");
@@ -162,8 +318,8 @@ void initializeDefaultAlarms() {
     // Save to EEPROM
     saveAlarmSettings();
 
-    // Mark as initialized
-    EEPROM.write(0, 0xAA);
+    // Mark as initialized - use the dedicated address
+    EEPROM.write(EEPROM_INITIALIZED_ADDR, 0xAA);
     EEPROM.commit();
 
     Serial.println("Default alarms initialized.");
@@ -187,8 +343,9 @@ void loadSettings() {
     fridayAlarms[i].enabled = EEPROM.read(FRIDAY_ALARMS_ADDR + (i * 3) + 2);
   }
 }
-
 void saveWiFiSettings() {
+  Serial.println("Saving WiFi settings to EEPROM...");
+
   // Save WiFi settings byte by byte
   for (int i = 0; i < sizeof(sta_ssid); i++) {
     EEPROM.write(WIFI_SSID_ADDR + i, sta_ssid[i]);
@@ -198,7 +355,13 @@ void saveWiFiSettings() {
     EEPROM.write(WIFI_PASS_ADDR + i, sta_password[i]);
   }
 
-  EEPROM.commit();
+  // Commit changes to EEPROM
+  bool success = EEPROM.commit();
+  if (success) {
+    Serial.println("WiFi settings saved successfully");
+  } else {
+    Serial.println("Error saving WiFi settings to EEPROM");
+  }
 }
 void loadWiFiSettings() {
   // Clear buffers first
@@ -207,22 +370,28 @@ void loadWiFiSettings() {
 
   // Load WiFi settings byte by byte
   for (int i = 0; i < sizeof(sta_ssid) - 1; i++) {
-    sta_ssid[i] = EEPROM.read(WIFI_SSID_ADDR + i);
-    // Break at null terminator
-    if (sta_ssid[i] == 0) break;
+    char c = EEPROM.read(WIFI_SSID_ADDR + i);
+    // Break at null terminator or if we find a non-printable character (possible corruption)
+    if (c == 0 || (c < 32 && c != 0)) break;
+    sta_ssid[i] = c;
   }
 
   for (int i = 0; i < sizeof(sta_password) - 1; i++) {
-    sta_password[i] = EEPROM.read(WIFI_PASS_ADDR + i);
-    // Break at null terminator
-    if (sta_password[i] == 0) break;
+    char c = EEPROM.read(WIFI_PASS_ADDR + i);
+    // Break at null terminator or if we find a non-printable character (possible corruption)
+    if (c == 0 || (c < 32 && c != 0)) break;
+    sta_password[i] = c;
   }
 
   // Ensure null termination
   sta_ssid[sizeof(sta_ssid) - 1] = 0;
   sta_password[sizeof(sta_password) - 1] = 0;
-}
 
+  // Print loaded WiFi settings for debugging
+  Serial.print("Loaded WiFi SSID from EEPROM: ");
+  Serial.println(sta_ssid);
+  Serial.println("Password loaded (not displayed for security)");
+}
 void saveAlarmSettings() {
   // Save regular alarms
   for (int i = 0; i < 12; i++) {
@@ -260,8 +429,18 @@ void checkAlarms() {
 void ringBell() {
   Serial.println("RING BELL!");
   digitalWrite(RELAY_PIN, HIGH);
-  delay(bellDuration);  // Ring for 3 seconds
+
+  // Display "BELL!" message on the matrix
+  matrix.displayClear();
+  matrix.setTextEffect(PA_SCROLL_LEFT, PA_SCROLL_LEFT);
+  matrix.displayText("BELL!", PA_CENTER, 100, 0, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
+
+  delay(bellDuration);  // Ring for the specified duration
   digitalWrite(RELAY_PIN, LOW);
+
+  // Reset the display mode timer to ensure clean transition back to time display
+  lastModeChange = millis();
+  displayMode = 0;
 }
 
 void handleRoot() {
@@ -336,6 +515,14 @@ void handleRoot() {
     "<h2>Test Bell</h2>"
     "<button onclick=\"testBell()\">Ring Bell (3 seconds)</button>"
     "</div>"
+
+    String displayControlHtml = R"(
+<div class="container">
+<h2>Display Settings</h2>
+<div class="form-group"><label for="brightness">Display Brightness (0-15):</label><input type="range" id="brightness" min="0" max="15" value="8"></div>
+<button onclick="setBrightness()">Set Brightness</button>
+</div>
+)";
     "</div>";
 
   String script =
@@ -348,6 +535,9 @@ void handleRoot() {
     "function setDateTime(){var d=document.getElementById('date').value;var t=document.getElementById('time').value;if(!d||!t){alert('Please enter both date and time');return}fetch('/api/time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:d,time:t})}).then(function(r){return r.json()}).then(function(d){if(d.success){alert('Date and time set successfully');refreshStatus()}else alert('Error: '+d.message)}).catch(function(e){console.error('Error:',e)})}"
     "function setWiFi(){var s=document.getElementById('ssid').value;var p=document.getElementById('password').value;if(!s){alert('Please enter SSID');return}fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:s,password:p})}).then(function(r){return r.json()}).then(function(d){if(d.success)alert('WiFi settings saved successfully!');else alert('Error: '+d.message)}).catch(function(e){console.error('Error:',e)})}"
     "function testBell(){fetch('/api/bell/test',{method:'POST'}).then(function(r){return r.json()}).then(function(d){if(d.success)alert('Bell test initiated!');else alert('Error: '+d.message)}).catch(function(e){console.error('Error:',e)})}"
+    String displayControlScript = R"(
+function setBrightness(){var b=parseInt(document.getElementById('brightness').value);fetch('/api/display/brightness',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({brightness:b})}).then(function(r){return r.json()}).then(function(d){if(d.success)alert('Display brightness updated');else alert('Error: '+d.message)}).catch(function(e){console.error('Error:',e)})}
+)";
     "</script>"
     "</body>"
     "</html>";
