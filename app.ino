@@ -38,6 +38,10 @@ RTC_DS3231 rtc;
 int Duration = 2;
 int bellDuration = Duration * 1000;
 
+// Add global variables for duration settings
+int shortDuration = 1; // Default 1 second
+int longDuration = 3;  // Default 3 seconds
+
 // Create a new instance of the MD_Parola class for scrolling text
 MD_Parola matrix = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
 
@@ -59,11 +63,12 @@ char sta_password[32] = "";
 
 ESP8266WebServer server(80);
 
-// Alarms structure
+// First, modify the Alarm structure to include duration type
 struct Alarm {
   uint8_t hour;
   uint8_t minute;
   bool enabled;
+  uint8_t durationType; // 0 for short, 1 for long
 };
 
 // Alarm storage (12 alarms per day, plus separate Friday alarms)
@@ -77,6 +82,9 @@ Alarm fridayAlarms[12];
 #define WIFI_PASS_ADDR 64        // Adjusted to avoid potential overlap
 #define REGULAR_ALARMS_ADDR 128  // Adjusted to avoid potential overlap
 #define FRIDAY_ALARMS_ADDR 320   // Adjusted to avoid potential overlap
+// Add EEPROM addresses for storing duration settings
+#define SHORT_DURATION_ADDR 492  // Near the end of EEPROM
+#define LONG_DURATION_ADDR 496   // Near the end of EEPROM
 
 void setup() {
   Serial.begin(115200);
@@ -194,88 +202,96 @@ void setupMatrix() {
 
   Serial.println("MAX7219 Matrix initialized");
 }
-
-// Update display based on current mode
 void updateMatrixDisplay() {
   DateTime now = rtc.now();
-
+  
   if (millis() - lastModeChange > displayModeChangeInterval) {
     displayMode = (displayMode + 1) % 3;  // Cycle through display modes
     lastModeChange = millis();
     matrix.displayClear();
   }
-
-  switch (displayMode) {
-    case 0:  // Time display (HH:MM)
-      sprintf(timeBuffer, "%02d:%02d", now.hour(), now.minute());
-      if (!matrix.getTextProgress() && (millis() - lastDisplayUpdate > displayUpdateInterval)) {
+  
+  // Only update if it's time to
+  if (millis() - lastDisplayUpdate > displayUpdateInterval) {
+    lastDisplayUpdate = millis();
+    
+    switch (displayMode) {
+      case 0:  // Time display (HH:MM)
+        sprintf(timeBuffer, "%02d:%02d", now.hour(), now.minute());
         matrix.setTextEffect(PA_NO_EFFECT, PA_NO_EFFECT);
         matrix.setPause(1000);
         matrix.displayText(timeBuffer, PA_CENTER, 0, 0, PA_NO_EFFECT, PA_NO_EFFECT);
-        lastDisplayUpdate = millis();
-      }
-      break;
-
-    case 1:  // Date display (MM-DD)
-      sprintf(dateBuffer, "%02d-%02d", now.month(), now.day());
-      if (!matrix.getTextProgress() && (millis() - lastDisplayUpdate > displayUpdateInterval)) {
+        break;
+        
+      case 1:  // Date display (MM-DD)
+        sprintf(dateBuffer, "%02d-%02d", now.month(), now.day());
         matrix.setTextEffect(PA_SCROLL_LEFT, PA_SCROLL_LEFT);
         matrix.setPause(1000);
         matrix.displayText(dateBuffer, PA_LEFT, 100, 1000, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
-        lastDisplayUpdate = millis();
-      }
-      break;
-
-    case 2:  // Day of week display
-      const char* dayOfWeek;
-      switch (now.dayOfTheWeek()) {
-        case 0: dayOfWeek = "SUN"; break;
-        case 1: dayOfWeek = "MON"; break;
-        case 2: dayOfWeek = "TUE"; break;
-        case 3: dayOfWeek = "WED"; break;
-        case 4: dayOfWeek = "THU"; break;
-        case 5: dayOfWeek = "FRI"; break;
-        case 6: dayOfWeek = "SAT"; break;
-      }
-      if (!matrix.getTextProgress() && (millis() - lastDisplayUpdate > displayUpdateInterval)) {
+        break;
+        
+      case 2:  // Day of week display
+        const char* dayOfWeek;
+        switch (now.dayOfTheWeek()) {
+          case 0: dayOfWeek = "SUN"; break;
+          case 1: dayOfWeek = "MON"; break;
+          case 2: dayOfWeek = "TUE"; break;
+          case 3: dayOfWeek = "WED"; break;
+          case 4: dayOfWeek = "THU"; break;
+          case 5: dayOfWeek = "FRI"; break;
+          case 6: dayOfWeek = "SAT"; break;
+        }
         matrix.setTextEffect(PA_SCROLL_LEFT, PA_SCROLL_LEFT);
         matrix.setPause(1000);
         matrix.displayText(dayOfWeek, PA_LEFT, 100, 1000, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
-        lastDisplayUpdate = millis();
-      }
-      break;
+        break;
+    }
   }
 }
-
 void handleSetBrightness() {
+  // Check if the request contains a body
   if (server.hasArg("plain")) {
+    // Get the JSON data from the request body
     String json = server.arg("plain");
+    
+    // Create a JSON document with size 64 bytes (enough for a small JSON object)
     DynamicJsonDocument doc(64);
+    
+    // Try to parse the JSON string into the doc object
     DeserializationError error = deserializeJson(doc, json);
 
+    // If there was an error parsing the JSON
     if (error) {
+      // Send an error response back to the client
       server.send(400, "application/json", "{\"success\":false,\"message\":\"Invalid JSON\"}");
       return;
     }
 
+    // Check if the JSON contains the expected "brightness" key
     if (doc.containsKey("brightness")) {
+      // Extract the brightness value from the JSON
       int brightness = doc["brightness"].as<int>();
-
-      // Validate brightness range (0-15)
+      
+      // Validate that the brightness value is within the allowed range (0-15)
       if (brightness >= 0 && brightness <= 15) {
+        // Set the LED matrix brightness
         matrix.setIntensity(brightness);
+        
+        // Send a success response
         server.send(200, "application/json", "{\"success\":true}");
       } else {
+        // Send an error if brightness is out of range
         server.send(400, "application/json", "{\"success\":false,\"message\":\"Brightness must be between 0 and 15\"}");
       }
     } else {
+      // Send an error if the brightness key is missing
       server.send(400, "application/json", "{\"success\":false,\"message\":\"Brightness value is required\"}");
     }
   } else {
+    // Send an error if no data was received
     server.send(400, "application/json", "{\"success\":false,\"message\":\"No data received\"}");
   }
 }
-
 void setupWebServer() {
   // Main page
   server.on("/", HTTP_GET, handleRoot);
@@ -292,11 +308,48 @@ void setupWebServer() {
 
   // Add new endpoint for display brightness
   server.on("/api/display/brightness", HTTP_POST, handleSetBrightness);
-
+  // Add new endpoint for duration settings
+  server.on("/api/bell/durations", HTTP_POST, handleSetDurations);
+  
   // Start server
   server.begin();
   Serial.println("HTTP server started");
 }
+
+// Add a handler for duration settings
+void handleSetDurations() {
+  if (server.hasArg("plain")) {
+    String json = server.arg("plain");
+    DynamicJsonDocument doc(64);
+    DeserializationError error = deserializeJson(doc, json);
+
+    if (error) {
+      server.send(400, "application/json", "{\"success\":false,\"message\":\"Invalid JSON\"}");
+      return;
+    }
+
+    if (doc.containsKey("shortDuration") && doc.containsKey("longDuration")) {
+      int shortValue = doc["shortDuration"].as<int>();
+      int longValue = doc["longDuration"].as<int>();
+      
+      // Validate values
+      if (shortValue >= 1 && shortValue <= 5 && longValue >= 1 && longValue <= 5) {
+        shortDuration = shortValue;
+        longDuration = longValue;
+        saveDurationSettings();
+        server.send(200, "application/json", "{\"success\":true}");
+      } else {
+        server.send(400, "application/json", "{\"success\":false,\"message\":\"Duration must be between 1 and 5 seconds\"}");
+      }
+    } else {
+      server.send(400, "application/json", "{\"success\":false,\"message\":\"Both shortDuration and longDuration are required\"}");
+    }
+  } else {
+    server.send(400, "application/json", "{\"success\":false,\"message\":\"No data received\"}");
+  }
+}
+
+// Modify initializeDefaultAlarms to set default duration type
 void initializeDefaultAlarms() {
   // Check if alarms have been initialized before
   bool initialized = EEPROM.read(EEPROM_INITIALIZED_ADDR) == 0xAA;
@@ -304,16 +357,23 @@ void initializeDefaultAlarms() {
   if (!initialized) {
     Serial.println("Initializing default alarms...");
 
-    // Set all alarms to defaults (disabled, 8:00 AM)
+    // Set all alarms to defaults (disabled, 8:00 AM, short duration)
     for (int i = 0; i < 12; i++) {
       regularAlarms[i].hour = 8;
       regularAlarms[i].minute = 0;
       regularAlarms[i].enabled = false;
+      regularAlarms[i].durationType = 0; // Default to short duration
 
       fridayAlarms[i].hour = 8;
       fridayAlarms[i].minute = 0;
       fridayAlarms[i].enabled = false;
+      fridayAlarms[i].durationType = 0; // Default to short duration
     }
+
+    // Initialize duration settings
+    shortDuration = 1; // 1 second default
+    longDuration = 3;  // 3 seconds default
+    saveDurationSettings();
 
     // Save to EEPROM
     saveAlarmSettings();
@@ -325,24 +385,35 @@ void initializeDefaultAlarms() {
     Serial.println("Default alarms initialized.");
   }
 }
+
 void loadSettings() {
   // Load WiFi settings
   loadWiFiSettings();
 
   // Load regular alarms
   for (int i = 0; i < 12; i++) {
-    regularAlarms[i].hour = EEPROM.read(REGULAR_ALARMS_ADDR + (i * 3));
-    regularAlarms[i].minute = EEPROM.read(REGULAR_ALARMS_ADDR + (i * 3) + 1);
-    regularAlarms[i].enabled = EEPROM.read(REGULAR_ALARMS_ADDR + (i * 3) + 2);
+    regularAlarms[i].hour = EEPROM.read(REGULAR_ALARMS_ADDR + (i * 4));     // Changed from 3 to 4 bytes per alarm
+    regularAlarms[i].minute = EEPROM.read(REGULAR_ALARMS_ADDR + (i * 4) + 1);
+    regularAlarms[i].enabled = EEPROM.read(REGULAR_ALARMS_ADDR + (i * 4) + 2);
+    regularAlarms[i].durationType = EEPROM.read(REGULAR_ALARMS_ADDR + (i * 4) + 3);
   }
 
   // Load Friday alarms
   for (int i = 0; i < 12; i++) {
-    fridayAlarms[i].hour = EEPROM.read(FRIDAY_ALARMS_ADDR + (i * 3));
-    fridayAlarms[i].minute = EEPROM.read(FRIDAY_ALARMS_ADDR + (i * 3) + 1);
-    fridayAlarms[i].enabled = EEPROM.read(FRIDAY_ALARMS_ADDR + (i * 3) + 2);
+    fridayAlarms[i].hour = EEPROM.read(FRIDAY_ALARMS_ADDR + (i * 4));      // Changed from 3 to 4 bytes per alarm
+    fridayAlarms[i].minute = EEPROM.read(FRIDAY_ALARMS_ADDR + (i * 4) + 1);
+    fridayAlarms[i].enabled = EEPROM.read(FRIDAY_ALARMS_ADDR + (i * 4) + 2);
+    fridayAlarms[i].durationType = EEPROM.read(FRIDAY_ALARMS_ADDR + (i * 4) + 3);
   }
+
+  // Load duration settings
+  shortDuration = EEPROM.read(SHORT_DURATION_ADDR);
+  if (shortDuration < 1 || shortDuration > 5) shortDuration = 1; // Validate and set default if invalid
+  
+  longDuration = EEPROM.read(LONG_DURATION_ADDR);
+  if (longDuration < 1 || longDuration > 5) longDuration = 3; // Validate and set default if invalid
 }
+
 void saveWiFiSettings() {
   Serial.println("Saving WiFi settings to EEPROM...");
 
@@ -392,24 +463,35 @@ void loadWiFiSettings() {
   Serial.println(sta_ssid);
   Serial.println("Password loaded (not displayed for security)");
 }
+// Modify the saveAlarmSettings function to save duration settings
 void saveAlarmSettings() {
   // Save regular alarms
   for (int i = 0; i < 12; i++) {
-    EEPROM.write(REGULAR_ALARMS_ADDR + (i * 3), regularAlarms[i].hour);
-    EEPROM.write(REGULAR_ALARMS_ADDR + (i * 3) + 1, regularAlarms[i].minute);
-    EEPROM.write(REGULAR_ALARMS_ADDR + (i * 3) + 2, regularAlarms[i].enabled);
+    EEPROM.write(REGULAR_ALARMS_ADDR + (i * 4), regularAlarms[i].hour);
+    EEPROM.write(REGULAR_ALARMS_ADDR + (i * 4) + 1, regularAlarms[i].minute);
+    EEPROM.write(REGULAR_ALARMS_ADDR + (i * 4) + 2, regularAlarms[i].enabled);
+    EEPROM.write(REGULAR_ALARMS_ADDR + (i * 4) + 3, regularAlarms[i].durationType);
   }
 
   // Save Friday alarms
   for (int i = 0; i < 12; i++) {
-    EEPROM.write(FRIDAY_ALARMS_ADDR + (i * 3), fridayAlarms[i].hour);
-    EEPROM.write(FRIDAY_ALARMS_ADDR + (i * 3) + 1, fridayAlarms[i].minute);
-    EEPROM.write(FRIDAY_ALARMS_ADDR + (i * 3) + 2, fridayAlarms[i].enabled);
+    EEPROM.write(FRIDAY_ALARMS_ADDR + (i * 4), fridayAlarms[i].hour);
+    EEPROM.write(FRIDAY_ALARMS_ADDR + (i * 4) + 1, fridayAlarms[i].minute);
+    EEPROM.write(FRIDAY_ALARMS_ADDR + (i * 4) + 2, fridayAlarms[i].enabled);
+    EEPROM.write(FRIDAY_ALARMS_ADDR + (i * 4) + 3, fridayAlarms[i].durationType);
   }
 
   EEPROM.commit();
 }
 
+// Add a function to save duration settings
+void saveDurationSettings() {
+  EEPROM.write(SHORT_DURATION_ADDR, shortDuration);
+  EEPROM.write(LONG_DURATION_ADDR, longDuration);
+  EEPROM.commit();
+}
+
+// Modify the checkAlarms function to pass duration type to ringBell
 void checkAlarms() {
   DateTime now = rtc.now();
 
@@ -419,29 +501,43 @@ void checkAlarms() {
   // Check each alarm
   for (int i = 0; i < 12; i++) {
     if (currentAlarms[i].enabled && currentAlarms[i].hour == now.hour() && currentAlarms[i].minute == now.minute() && now.second() == 0) {
-      // Alarm matched! Ring the bell
-      ringBell();
+      // Alarm matched! Ring the bell with the specified duration type
+      ringBell(currentAlarms[i].durationType);
       break;
     }
   }
 }
 
-void ringBell() {
-  Serial.println("RING BELL!");
+// Modify the ringBell function to handle different durations
+void ringBell(int alarmDurationType) {
+  int ringDuration;
+  
+  // Get the appropriate duration based on type
+  if (alarmDurationType == 0) {
+    ringDuration = shortDuration * 1000; // Convert to milliseconds
+  } else {
+    ringDuration = longDuration * 1000;  // Convert to milliseconds
+  }
+  
+  Serial.print("RING BELL for ");
+  Serial.print(ringDuration / 1000);
+  Serial.println(" seconds!");
+  
   digitalWrite(RELAY_PIN, HIGH);
-
+  
   // Display "BELL!" message on the matrix
   matrix.displayClear();
   matrix.setTextEffect(PA_SCROLL_LEFT, PA_SCROLL_LEFT);
   matrix.displayText("BELL!", PA_CENTER, 100, 0, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
-
-  delay(bellDuration);  // Ring for the specified duration
+  
+  delay(ringDuration);  // Ring for the specified duration
   digitalWrite(RELAY_PIN, LOW);
-
+  
   // Reset the display mode timer to ensure clean transition back to time display
   lastModeChange = millis();
   displayMode = 0;
 }
+// Update the handleRoot function to change how we display the current SSID
 
 void handleRoot() {
   String html =
@@ -463,12 +559,14 @@ void handleRoot() {
     "th{background-color:#f2f2f2}"
     ".alarm-row input[type=\"checkbox\"]{width:auto}"
     ".alarm-row input[type=\"time\"]{width:120px}"
+    ".alarm-row select{width:100px}"
     ".tabs{display:flex;margin-bottom:20px}"
     ".tab{padding:10px 20px;cursor:pointer;background-color:#ddd;margin-right:5px}"
     ".tab.active{background-color:#4CAF50;color:white}"
     ".tab-content{display:none}"
     ".tab-content.active{display:block}"
     "#status{font-weight:bold;margin-bottom:10px}"
+    ".current-setting{font-style:italic;color:#555;margin-bottom:5px}"
     "</style>"
     "</head>"
     "<body>"
@@ -483,7 +581,7 @@ void handleRoot() {
     "<div class=\"container\">"
     "<h2>Regular Alarms (Monday-Thursday)</h2>"
     "<table id=\"regularAlarms\">"
-    "<tr><th>#</th><th>Time</th><th style=\"display:none\"></th><th></th><th>Enabled</th></tr>"
+    "<tr><th>#</th><th>Time</th><th>Duration</th><th>Enabled</th></tr>"
     "</table>"
     "<button onclick=\"saveAlarms('regular')\">Save Regular Alarms</button>"
     "</div>"
@@ -492,7 +590,7 @@ void handleRoot() {
     "<div class=\"container\">"
     "<h2>Friday Alarms</h2>"
     "<table id=\"fridayAlarms\">"
-    "<tr><th>#</th><th>Time</th><th style=\"display:none\"></th><th></th><th>Enabled</th></tr>"
+    "<tr><th>#</th><th>Time</th><th>Duration</th><th>Enabled</th></tr>"
     "</table>"
     "<button onclick=\"saveAlarms('friday')\">Save Friday Alarms</button>"
     "</div>"
@@ -507,43 +605,56 @@ void handleRoot() {
     "</div>"
     "<div class=\"container\">"
     "<h2>WiFi Settings</h2>"
-    "<div class=\"form-group\"><label for=\"ssid\">SSID:</label><input type=\"text\" id=\"ssid\" placeholder=\"Network name\"></div>"
-    "<div class=\"form-group\"><label for=\"password\">Password:</label><input type=\"password\" id=\"password\" placeholder=\"WiFi password\"></div>"
+    "<div class=\"form-group\"><label>Current WiFi Network:</label><div id=\"currentSSID\" class=\"current-setting\">None</div></div>"
+    "<div class=\"form-group\"><label for=\"ssid\">New SSID:</label><input type=\"text\" id=\"ssid\" placeholder=\"Enter new network name\"></div>"
+    "<div class=\"form-group\"><label for=\"password\">New Password:</label><input type=\"password\" id=\"password\" placeholder=\"Enter new WiFi password\"></div>"
     "<button onclick=\"setWiFi()\">Save WiFi Settings</button>"
     "</div>"
     "<div class=\"container\">"
-    "<h2>Test Bell</h2>"
-    "<button onclick=\"testBell()\">Ring Bell (3 seconds)</button>"
+    "<h2>Bell Duration Settings</h2>"
+    "<div class=\"form-group\"><label for=\"shortDuration\">Short Duration (seconds):</label>"
+    "<select id=\"shortDuration\">"
+    "<option value=\"1\">1</option><option value=\"2\">2</option><option value=\"3\">3</option>"
+    "<option value=\"4\">4</option><option value=\"5\">5</option>"
+    "</select></div>"
+    "<div class=\"form-group\"><label for=\"longDuration\">Long Duration (seconds):</label>"
+    "<select id=\"longDuration\">"
+    "<option value=\"1\">1</option><option value=\"2\">2</option><option value=\"3\">3</option>"
+    "<option value=\"4\">4</option><option value=\"5\">5</option>"
+    "</select></div>"
+    "<button onclick=\"setDurations()\">Save Duration Settings</button>"
     "</div>"
-
-    String displayControlHtml = R"(
-<div class="container">
-<h2>Display Settings</h2>
-<div class="form-group"><label for="brightness">Display Brightness (0-15):</label><input type="range" id="brightness" min="0" max="15" value="8"></div>
-<button onclick="setBrightness()">Set Brightness</button>
-</div>
-)";
+    "<div class=\"container\">"
+    "<h2>Test Bell</h2>"
+    "<button onclick=\"testBell()\">Ring Bell (Short Duration)</button>"
+    "</div>"
+    "<div class=\"container\">"
+    "<h2>Display Settings</h2>"
+    "<div class=\"form-group\"><label for=\"brightness\">Display Brightness (0-15):</label><input type=\"range\" id=\"brightness\" min=\"0\" max=\"15\" value=\"8\"></div>"
+    "<button onclick=\"setBrightness()\">Set Brightness</button>"
+    "</div>"
     "</div>";
 
   String script =
     "<script>"
     "document.addEventListener('DOMContentLoaded',function(){refreshStatus();loadAlarms('regular');loadAlarms('friday');setInterval(refreshStatus,10000)});"
     "function openTab(n){var t=document.getElementsByClassName('tab-content');for(var i=0;i<t.length;i++)t[i].classList.remove('active');var a=document.getElementsByClassName('tab');for(var i=0;i<a.length;i++)a[i].classList.remove('active');document.getElementById(n).classList.add('active');for(var i=0;i<a.length;i++)if(a[i].textContent.toLowerCase().includes(n)){a[i].classList.add('active');break}}"
-    "function refreshStatus(){fetch('/api/status').then(function(r){return r.json()}).then(function(d){document.getElementById('status').textContent='Current Time: '+d.date+' '+d.time+' ('+d.day+') - IP: '+d.ip;document.getElementById('currentTime').textContent=d.date+' '+d.time;if(d.ssid)document.getElementById('ssid').value=d.ssid}).catch(function(e){console.error('Error:',e)})}"
-    "function loadAlarms(t){fetch('/api/alarms/'+t).then(function(r){return r.json()}).then(function(d){var e=document.getElementById(t+'Alarms');while(e.rows.length>1)e.deleteRow(1);for(var i=0;i<d.length;i++){var r=e.insertRow(-1);r.className='alarm-row';var c1=r.insertCell(0);c1.textContent=i+1;var c2=r.insertCell(1);var c3=r.insertCell(2);var h=document.createElement('input');h.type='time';var hr=d[i].hour.toString();if(hr.length<2)hr='0'+hr;var mn=d[i].minute.toString();if(mn.length<2)mn='0'+mn;h.value=hr+':'+mn;h.className='time-input';h.style.width='120px';c2.appendChild(h);c2.colSpan=2;c3.style.display='none';var c4=r.insertCell(3);var b=document.createElement('input');b.type='checkbox';b.checked=d[i].enabled;c4.appendChild(b)}}).catch(function(e){console.error('Error:',e)})}"
-    "function saveAlarms(t){var e=document.getElementById(t+'Alarms');var a=[];for(var i=1;i<e.rows.length;i++){var r=e.rows[i];var h=r.cells[1].querySelector('input').value;var c=r.cells[3].querySelector('input').checked;a.push({hour:parseInt(h.split(':')[0]),minute:parseInt(h.split(':')[1]),enabled:c})}fetch('/api/alarms/'+t,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(a)}).then(function(r){return r.json()}).then(function(d){if(d.success)alert((t.charAt(0).toUpperCase()+t.slice(1))+' alarms saved');else alert('Error: '+d.message)}).catch(function(e){console.error('Error:',e)})}"
+    "function refreshStatus(){fetch('/api/status').then(function(r){return r.json()}).then(function(d){document.getElementById('status').textContent='Current Time: '+d.date+' '+d.time+' ('+d.day+') - IP: '+d.ip;document.getElementById('currentTime').textContent=d.date+' '+d.time;if(d.ssid){document.getElementById('currentSSID').textContent=d.ssid;}else{document.getElementById('currentSSID').textContent='Not connected';}document.getElementById('shortDuration').value=d.shortDuration;document.getElementById('longDuration').value=d.longDuration;}).catch(function(e){console.error('Error:',e)})}"
+    "function loadAlarms(t){fetch('/api/alarms/'+t).then(function(r){return r.json()}).then(function(d){var e=document.getElementById(t+'Alarms');while(e.rows.length>1)e.deleteRow(1);for(var i=0;i<d.length;i++){var r=e.insertRow(-1);r.className='alarm-row';var c1=r.insertCell(0);c1.textContent=i+1;var c2=r.insertCell(1);var h=document.createElement('input');h.type='time';var hr=d[i].hour.toString();if(hr.length<2)hr='0'+hr;var mn=d[i].minute.toString();if(mn.length<2)mn='0'+mn;h.value=hr+':'+mn;h.className='time-input';h.style.width='120px';c2.appendChild(h);var c3=r.insertCell(2);var s=document.createElement('select');s.innerHTML='<option value=\"0\">Short</option><option value=\"1\">Long</option>';s.value=d[i].durationType;c3.appendChild(s);var c4=r.insertCell(3);var b=document.createElement('input');b.type='checkbox';b.checked=d[i].enabled;c4.appendChild(b)}}).catch(function(e){console.error('Error:',e)})}"
+    "function saveAlarms(t){var e=document.getElementById(t+'Alarms');var a=[];for(var i=1;i<e.rows.length;i++){var r=e.rows[i];var h=r.cells[1].querySelector('input').value;var d=parseInt(r.cells[2].querySelector('select').value);var c=r.cells[3].querySelector('input').checked;a.push({hour:parseInt(h.split(':')[0]),minute:parseInt(h.split(':')[1]),durationType:d,enabled:c})}fetch('/api/alarms/'+t,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(a)}).then(function(r){return r.json()}).then(function(d){if(d.success)alert((t.charAt(0).toUpperCase()+t.slice(1))+' alarms saved');else alert('Error: '+d.message)}).catch(function(e){console.error('Error:',e)})}"
     "function setDateTime(){var d=document.getElementById('date').value;var t=document.getElementById('time').value;if(!d||!t){alert('Please enter both date and time');return}fetch('/api/time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:d,time:t})}).then(function(r){return r.json()}).then(function(d){if(d.success){alert('Date and time set successfully');refreshStatus()}else alert('Error: '+d.message)}).catch(function(e){console.error('Error:',e)})}"
-    "function setWiFi(){var s=document.getElementById('ssid').value;var p=document.getElementById('password').value;if(!s){alert('Please enter SSID');return}fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:s,password:p})}).then(function(r){return r.json()}).then(function(d){if(d.success)alert('WiFi settings saved successfully!');else alert('Error: '+d.message)}).catch(function(e){console.error('Error:',e)})}"
+    "function setWiFi(){var s=document.getElementById('ssid').value;var p=document.getElementById('password').value;if(!s){alert('Please enter SSID');return}fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:s,password:p})}).then(function(r){return r.json()}).then(function(d){if(d.success){alert('WiFi settings saved successfully!');document.getElementById('ssid').value='';document.getElementById('password').value='';refreshStatus();}else alert('Error: '+d.message)}).catch(function(e){console.error('Error:',e)})}"
+    "function setDurations(){var s=parseInt(document.getElementById('shortDuration').value);var l=parseInt(document.getElementById('longDuration').value);fetch('/api/bell/durations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({shortDuration:s,longDuration:l})}).then(function(r){return r.json()}).then(function(d){if(d.success)alert('Duration settings saved successfully!');else alert('Error: '+d.message)}).catch(function(e){console.error('Error:',e)})}"
     "function testBell(){fetch('/api/bell/test',{method:'POST'}).then(function(r){return r.json()}).then(function(d){if(d.success)alert('Bell test initiated!');else alert('Error: '+d.message)}).catch(function(e){console.error('Error:',e)})}"
-    String displayControlScript = R"(
-function setBrightness(){var b=parseInt(document.getElementById('brightness').value);fetch('/api/display/brightness',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({brightness:b})}).then(function(r){return r.json()}).then(function(d){if(d.success)alert('Display brightness updated');else alert('Error: '+d.message)}).catch(function(e){console.error('Error:',e)})}
-)";
+    "function setBrightness(){var b=parseInt(document.getElementById('brightness').value);fetch('/api/display/brightness',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({brightness:b})}).then(function(r){return r.json()}).then(function(d){if(d.success)alert('Display brightness updated');else alert('Error: '+d.message)}).catch(function(e){console.error('Error:',e)})}"
     "</script>"
     "</body>"
     "</html>";
 
   server.send(200, "text/html", html + script);
 }
+
+// Update the handleStatus function to include duration settings
 void handleStatus() {
   DateTime now = rtc.now();
 
@@ -569,6 +680,8 @@ void handleStatus() {
   doc["time"] = timeStr;
   doc["day"] = day;
   doc["ip"] = ipAddress;
+  doc["shortDuration"] = shortDuration;
+  doc["longDuration"] = longDuration;
 
   // Encode the SSID for proper display in the browser
   char encodedSsid[64];
@@ -581,6 +694,7 @@ void handleStatus() {
   server.send(200, "application/json", response);
 }
 
+// Modify the JSON response for alarms to include duration type
 void handleGetRegularAlarms() {
   DynamicJsonDocument doc(1024);
   JsonArray array = doc.to<JsonArray>();
@@ -590,13 +704,13 @@ void handleGetRegularAlarms() {
     alarmObj["hour"] = regularAlarms[i].hour;
     alarmObj["minute"] = regularAlarms[i].minute;
     alarmObj["enabled"] = regularAlarms[i].enabled;
+    alarmObj["durationType"] = regularAlarms[i].durationType;
   }
 
   String response;
   serializeJson(doc, response);
   server.send(200, "application/json", response);
 }
-
 void handleGetFridayAlarms() {
   DynamicJsonDocument doc(1024);
   JsonArray array = doc.to<JsonArray>();
@@ -606,13 +720,14 @@ void handleGetFridayAlarms() {
     alarmObj["hour"] = fridayAlarms[i].hour;
     alarmObj["minute"] = fridayAlarms[i].minute;
     alarmObj["enabled"] = fridayAlarms[i].enabled;
+    alarmObj["durationType"] = fridayAlarms[i].durationType;
   }
 
   String response;
   serializeJson(doc, response);
   server.send(200, "application/json", response);
 }
-
+// Update the handleSetRegularAlarms and handleSetFridayAlarms functions
 void handleSetRegularAlarms() {
   if (server.hasArg("plain")) {
     String json = server.arg("plain");
@@ -635,6 +750,13 @@ void handleSetRegularAlarms() {
       regularAlarms[i].hour = alarmObj["hour"];
       regularAlarms[i].minute = alarmObj["minute"];
       regularAlarms[i].enabled = alarmObj["enabled"];
+      
+      // Add durationType (with default if not provided)
+      if (alarmObj.containsKey("durationType")) {
+        regularAlarms[i].durationType = alarmObj["durationType"];
+      } else {
+        regularAlarms[i].durationType = 0; // Default to short
+      }
     }
 
     saveAlarmSettings();
@@ -666,6 +788,13 @@ void handleSetFridayAlarms() {
       fridayAlarms[i].hour = alarmObj["hour"];
       fridayAlarms[i].minute = alarmObj["minute"];
       fridayAlarms[i].enabled = alarmObj["enabled"];
+      
+      // Add durationType (with default if not provided)
+      if (alarmObj.containsKey("durationType")) {
+        fridayAlarms[i].durationType = alarmObj["durationType"];
+      } else {
+        fridayAlarms[i].durationType = 0; // Default to short
+      }
     }
 
     saveAlarmSettings();
@@ -752,7 +881,8 @@ void handleSetTime() {
   }
 }
 
+// Update handleTestBell to use the short duration by default
 void handleTestBell() {
-  ringBell();
+  ringBell(0); // Use short duration for test
   server.send(200, "application/json", "{\"success\":true}");
 }
